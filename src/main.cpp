@@ -2,7 +2,7 @@
     Скетч к проекту "Электронная шпаргалка с Wi-Fi" ESP8266
 
     MODIFIED BY ITMAN7145
-    
+
     Ссылка на ядро для IDE: https://arduino.esp8266.com/stable/package_esp8266com_index.json
     Рекомендуемая версия ядра 2.7.4
     Рекомендуемые настройки:
@@ -20,18 +20,20 @@
 #define STA_DEFAULT_SSID ""        // Стандартное имя точки доступа роутера (До 20-ти символов)
 #define STA_DEFAULT_PASS ""        // Стандартный пароль точки доступа роутера (До 20-ти символов)
 #define STA_CONNECT_EN 0           // 1/0 - вкл./выкл. подключение к роутеру
-#define WIFI_TIMEOUT_S 300         // Таймаут на отключение Wi-Fi (С)
+#define WIFI_TIMEOUT_S 300         // Таймаут на отключение Wi-Fi (секунды)
 
-#define UP_BTN_PIN 14              // Номер GPIO для кнопки ВВЕРХ
-#define OK_BTN_PIN 12              // Номер GPIO для кнопки ОК
-#define DWN_BTN_PIN 13             // Номер GPIO для кнопки ВНИЗ
-#define _EB_DEB 25                 // Дебаунс кнопок (мс)
+#define UP_BTN_PIN D6  // Номер GPIO для кнопки ВВЕРХ
+#define OK_BTN_PIN D5  // Номер GPIO для кнопки ОК
+#define DWN_BTN_PIN D7 // Номер GPIO для кнопки ВНИЗ
+#define _EB_DEB 25     // Дебаунс кнопок (мс)
 
-#define OLED_CONTRAST 100          // Яркость дисплея по умолчанию (%)
-#define IIC_SDA_PIN 4              // Номер GPIO SDA дисплея
-#define IIC_SCL_PIN 5              // Номер GPIO SCL дисплея
+#define OLED_CONTRAST 100 // Яркость дисплея по умолчанию (%)
+#define IIC_SDA_PIN D1    // Номер GPIO SDA дисплея
+#define IIC_SCL_PIN D2    // Номер GPIO SCL дисплея
+// #define VCC_DISP_PIN D3   // пин подключения VCC дисплея
+// #define GND_DISP_PIN D4   // пин подключения GND дисплея
 
-#define EE_KEY 0x10                // Ключ EEPROM (1 байт) - измени, чтобы сбросить настройки
+#define EE_KEY 0x10 // Ключ EEPROM (1 байт) - измени, чтобы сбросить настройки
 
 /* =========================================== */
 /* ============ Список библиотек ============= */
@@ -407,10 +409,17 @@ void enterToReadFile(void)
 
 void setup()
 {
+  // pinMode(VCC_DISP_PIN, OUTPUT);
+  // pinMode(GND_DISP_PIN, OUTPUT);
+  // digitalWrite(VCC_DISP_PIN, 1);
+  // digitalWrite(GND_DISP_PIN, 0);
+
   pinMode(UP_BTN_PIN, INPUT_PULLUP);
   pinMode(OK_BTN_PIN, INPUT_PULLUP);
   pinMode(DWN_BTN_PIN, INPUT_PULLUP); // Все пины кнопок в режиме входа с подтяжкой
   ok.setHoldTimeout(1500);            // Длинное удержание кнопки ОК - 1.5 секунды
+
+  Wire.begin(IIC_SDA_PIN, IIC_SCL_PIN);
 
   oled.init(IIC_SDA_PIN, IIC_SCL_PIN); // Инициализация оледа
   oled.clear();                        // Очистка оледа
