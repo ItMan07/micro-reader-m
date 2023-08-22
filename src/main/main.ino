@@ -16,30 +16,22 @@
 
 /* ================ Настройки ================ */
 
-#define AP_DEFAULT_SSID "MicroReader (MOD)"      // Стандартное имя точки доступа ESP (До 20-ти символов)
-#define AP_DEFAULT_PASS "12345687" // Стандартный пароль точки доступа ESP (До 20-ти символов)
-#define STA_DEFAULT_SSID ""        // Стандартное имя точки доступа роутера (До 20-ти символов)
-#define STA_DEFAULT_PASS ""        // Стандартный пароль точки доступа роутера (До 20-ти символов)
-#define STA_CONNECT_EN 0           // 1/0 - вкл./выкл. подключение к роутеру
-#define WIFI_TIMEOUT_S 300         // Таймаут на отключение Wi-Fi (секунды)
+#define AP_DEFAULT_SSID "MicroReader(MOD)" // Стандартное имя точки доступа ESP (До 20-ти символов)
+#define AP_DEFAULT_PASS "12345687"         // Стандартный пароль точки доступа ESP (До 20-ти символов)
+#define STA_DEFAULT_SSID ""                // Стандартное имя точки доступа роутера (До 20-ти символов)
+#define STA_DEFAULT_PASS ""                // Стандартный пароль точки доступа роутера (До 20-ти символов)
+#define STA_CONNECT_EN 0                   // 1/0 - вкл./выкл. подключение к роутеру
+#define WIFI_TIMEOUT_S 300                 // Таймаут на отключение Wi-Fi (секунды)
 
 #define IIC_SDA_PIN D1    // Номер GPIO SDA дисплея
 #define IIC_SCL_PIN D2    // Номер GPIO SCL дисплея
 #define OLED_CONTRAST 100 // Яркость дисплея по умолчанию (%)
 
-#define FLIP 0 // переворот дисплея (режим для левши)
-
-#if FLIP // меняем кнопки вниз и вверх местами
-#define UP_BTN_PIN D7  // Номер GPIO для кнопки ВВЕРХ
-#define OK_BTN_PIN D5  // Номер GPIO для кнопки ОК
-#define DWN_BTN_PIN D6 // Номер GPIO для кнопки ВНИЗ
-#else
+#define FLIP 0         // перевернуть экран
 #define UP_BTN_PIN D6  // Номер GPIO для кнопки ВВЕРХ
 #define OK_BTN_PIN D5  // Номер GPIO для кнопки ОК
 #define DWN_BTN_PIN D7 // Номер GPIO для кнопки ВНИЗ
-#endif
-
-#define _EB_DEB 25 // Дебаунс кнопок (мс)
+#define _EB_DEB 25     // Дебаунс кнопок (мс)
 
 #define EE_KEY 0x10 // Ключ EEPROM (1 байт) - измени, чтобы сбросить настройки
 
@@ -51,16 +43,16 @@
 #include <LittleFS.h>    // Либа файловой системы
 #include <GyverPortal.h> // Либа веб морды
 #include <GyverOLED.h>   // Либа олед-дисплея
-#include <EncButton.h>   // Либа кнопок
+#include <EncButton2.h>  // Либа кнопок
 
 /* =========================================== */
 /* ============ Список объектов ============== */
 
-GyverPortal ui(&LittleFS);            // Портал
-GyverOLED<SSD1306_128x64> oled;       // Олед
-EncButton<EB_TICK, UP_BTN_PIN> up;    // Кнопка вверх
-EncButton<EB_TICK, OK_BTN_PIN> ok;    // Кнопка ОК
-EncButton<EB_TICK, DWN_BTN_PIN> down; // Кнопка вниз
+GyverPortal ui(&LittleFS);                          // Портал
+GyverOLED<SSD1306_128x64> oled;                     // Олед
+EncButton2<EB_BTN> up(INPUT_PULLUP, UP_BTN_PIN);    // Кнопка вверх
+EncButton2<EB_BTN> ok(INPUT_PULLUP, OK_BTN_PIN);    // Кнопка ОК
+EncButton2<EB_BTN> down(INPUT_PULLUP, DWN_BTN_PIN); // Кнопка вниз
 
 /* =========================================== */
 /* ========= Глобальные переменные =========== */
@@ -72,6 +64,7 @@ struct
   char staSsid[21] = STA_DEFAULT_SSID; // Имя сети для STA режима по умолчанию
   char staPass[21] = STA_DEFAULT_PASS; // Пароль сети для STA режима по умолчанию
   bool staModeEn = STA_CONNECT_EN;     // Подключаться роутеру по умолчанию?
+  bool flip = FLIP;                    // перевернуть экран?
   int dispContrast = OLED_CONTRAST;    // Яркость оледа
 } sets;
 byte cursor = 0;       // Указатель (курсор) меню
@@ -93,27 +86,39 @@ void build()
   GP.GRID_RESPONSIVE(600);          // Отключение респонза при узком экране
   M_BLOCK(                          // Общий блок-колонка для WiFi
       GP.SUBMIT("SUBMIT SETTINGS"); // Кнопка отправки формы
-      M_BLOCK_TAB(                  // Конфиг для AP режима -> текстбоксы (логин + пароль)
-          "AP-Mode",                // Имя + тип DIV
+
+      M_BLOCK_TAB(   // Конфиг для AP режима -> текстбоксы (логин + пароль)
+          "AP-Mode", // Имя + тип DIV
           GP.TEXT("apSsid", "Login", sets.apSsid, "", 20);
           GP.BREAK();
           GP.TEXT("apPass", "Password", sets.apPass, "", 20); GP.BREAK(););
+
       M_BLOCK_TAB(    // Конфиг для STA режима -> текстбоксы (логин + пароль)
           "STA-Mode", // Имя + тип DIV
           GP.TEXT("staSsid", "Login", sets.staSsid, "", 20);
           GP.BREAK();
           GP.TEXT("staPass", "Password", sets.staPass, "", 20); GP.BREAK();
           M_BOX(GP_CENTER, GP.LABEL("STA Enable"); GP.SWITCH("staEn", sets.staModeEn);););
-      GP.FORM_END();         // <- Конец формы (костыль)
+
+      M_BLOCK_TAB(
+          "Flip",
+          GP.TEXT("Перевернуть экран");
+          GP.BREAK();
+          GP.SWITCH("flip_switch", sets.flip););
+
+      GP.FORM_END(); // <- Конец формы (костыль)
+
       M_BLOCK_TAB(           // Блок с OTA-апдейтом
           "ESP UPDATE",      // Имя + тип DIV
           GP.OTA_FIRMWARE(); // Кнопка с OTA начинкой
       );
+
       M_BLOCK_TAB(                    // Блок с файловым менеджером
           "FILE MANAGER",             // Имя + тип DIV
           GP.FILE_UPLOAD("file_upl"); // Кнопка для загрузки файла
           GP.FILE_MANAGER(&LittleFS); // Файловый менеджер
       ););
+
   GP.BUILD_END(); // Конец билда страницы
 }
 
@@ -126,6 +131,7 @@ void action(GyverPortal &p)
     p.copyStr("staSsid", sets.staSsid);
     p.copyStr("staPass", sets.staPass);
     p.copyBool("staEn", sets.staModeEn);
+    p.copyBool("flip_switch", sets.flip);
 
     byte con = map(sets.dispContrast, 10, 100, 1, 255);
     oled.setContrast(con); // Тут же задаем яркость оледа
@@ -243,7 +249,7 @@ void enterToWifiMenu(void)
     WiFi.mode(WIFI_STA);                    // Включаем wifi
     WiFi.begin(sets.staSsid, sets.staPass); // Подключаемся к сети
     oled.setCursor(60, 2);                  // Ставим курсор
-    
+
     for (byte i = 0; i < 10; i++)
     { // Цикл на 10 секунд
       if (WiFi.status() != WL_CONNECTED)
@@ -435,8 +441,20 @@ void setup()
   oled.update();                       // Вывод пустой картинки
   oled.autoPrintln(true);              // Включаем автоперенос строки
 
-  oled.flipH(FLIP); // переворот дисплея
-  oled.flipV(FLIP);
+  if (sets.flip)
+  {
+    oled.flipH(sets.flip); // переворот дисплея
+    oled.flipV(sets.flip);
+    up.setPins(DWN_BTN_PIN);
+    down.setPins(UP_BTN_PIN);
+  }
+  else
+  {
+    oled.flipH(sets.flip); // переворот дисплея
+    oled.flipV(sets.flip);
+    up.setPins(UP_BTN_PIN);
+    down.setPins(DWN_BTN_PIN);
+  }
 
   LittleFS.begin();  // Инициализация файловой системы
   EEPROM.begin(100); // Инициализация EEPROM
@@ -486,13 +504,4 @@ void loop()
     uiTimer = millis(); // Сбрасываем таймер дисплея
     enterToReadFile();  // Переходим к чтению файла
   }
-  // else if (up.isHold() and down.isHold())
-  // {
-  //   oled.flipH(1);
-  //   oled.flipV(1);
-
-  //   EncButton<EB_TICK, DWN_BTN_PIN> up;  // Кнопка вверх
-  //   EncButton<EB_TICK, OK_BTN_PIN> ok;   // Кнопка ОК
-  //   EncButton<EB_TICK, UP_BTN_PIN> down; // Кнопка вниз
-  // }
 }
