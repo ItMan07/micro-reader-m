@@ -2,6 +2,7 @@
     Скетч к проекту "Электронная шпаргалка с Wi-Fi" ESP8266
 
     MODIFIED BY ITMAN7145
+    https://github.com/ItMan7145/micro-reader
 
     Ссылка на ядро для IDE: https://arduino.esp8266.com/stable/package_esp8266com_index.json
     Рекомендуемая версия ядра 2.7.4
@@ -15,23 +16,30 @@
 
 /* ================ Настройки ================ */
 
-#define AP_DEFAULT_SSID "MRc"      // Стандартное имя точки доступа ESP (До 20-ти символов)
+#define AP_DEFAULT_SSID "MicroReader (MOD)"      // Стандартное имя точки доступа ESP (До 20-ти символов)
 #define AP_DEFAULT_PASS "12345687" // Стандартный пароль точки доступа ESP (До 20-ти символов)
 #define STA_DEFAULT_SSID ""        // Стандартное имя точки доступа роутера (До 20-ти символов)
 #define STA_DEFAULT_PASS ""        // Стандартный пароль точки доступа роутера (До 20-ти символов)
 #define STA_CONNECT_EN 0           // 1/0 - вкл./выкл. подключение к роутеру
 #define WIFI_TIMEOUT_S 300         // Таймаут на отключение Wi-Fi (секунды)
 
+#define IIC_SDA_PIN D1    // Номер GPIO SDA дисплея
+#define IIC_SCL_PIN D2    // Номер GPIO SCL дисплея
+#define OLED_CONTRAST 100 // Яркость дисплея по умолчанию (%)
+
+#define FLIP 0 // переворот дисплея (режим для левши)
+
+#if FLIP // меняем кнопки вниз и вверх местами
+#define UP_BTN_PIN D7  // Номер GPIO для кнопки ВВЕРХ
+#define OK_BTN_PIN D5  // Номер GPIO для кнопки ОК
+#define DWN_BTN_PIN D6 // Номер GPIO для кнопки ВНИЗ
+#else
 #define UP_BTN_PIN D6  // Номер GPIO для кнопки ВВЕРХ
 #define OK_BTN_PIN D5  // Номер GPIO для кнопки ОК
 #define DWN_BTN_PIN D7 // Номер GPIO для кнопки ВНИЗ
-#define _EB_DEB 25     // Дебаунс кнопок (мс)
+#endif
 
-#define OLED_CONTRAST 100 // Яркость дисплея по умолчанию (%)
-#define IIC_SDA_PIN D1    // Номер GPIO SDA дисплея
-#define IIC_SCL_PIN D2    // Номер GPIO SCL дисплея
-// #define VCC_DISP_PIN D3   // пин подключения VCC дисплея
-// #define GND_DISP_PIN D4   // пин подключения GND дисплея
+#define _EB_DEB 25 // Дебаунс кнопок (мс)
 
 #define EE_KEY 0x10 // Ключ EEPROM (1 байт) - измени, чтобы сбросить настройки
 
@@ -125,8 +133,10 @@ void action(GyverPortal &p)
     EEPROM.commit();       // Записываем
   }
 }
+
 /* ======================================================================= */
 /* ========================== Работа с файлами =========================== */
+
 String getFilenameByIndex(int idx)
 {                                   // Вывод имени файла по номеру
   Dir root = LittleFS.openDir("/"); // Открываем директорию (корень)
@@ -162,6 +172,7 @@ void drawMainMenu(void)
   oled.line(0, 10, 127, 10); // Линия
   oled.print("FILES FOUND: ");
   oled.print(files); // Выводим кол-во файлов
+
   for (uint8_t i = 0; i < 6 && i < files; i++)
   {                                                                    // Проходимся от 2й до 8й строки оледа
     oled.setCursor(0, i + 2);                                          // Ставим курсор на нужную строку
@@ -232,6 +243,7 @@ void enterToWifiMenu(void)
     WiFi.mode(WIFI_STA);                    // Включаем wifi
     WiFi.begin(sets.staSsid, sets.staPass); // Подключаемся к сети
     oled.setCursor(60, 2);                  // Ставим курсор
+    
     for (byte i = 0; i < 10; i++)
     { // Цикл на 10 секунд
       if (WiFi.status() != WL_CONNECTED)
@@ -378,6 +390,7 @@ void enterToReadFile(void)
     up.tick(); // Опрос кнопок
     ok.tick();
     down.tick();
+
     if (ok.isClick())
     {                     // Если ок нажат
       uiTimer = millis(); // Сбрасываем таймер дисплея
@@ -387,9 +400,9 @@ void enterToReadFile(void)
       return; // Закрываем файл и выходим
     }
     else if (up.isClick() or up.isHold())
-    {                                   // Если нажата или удержана вверх
-      uiTimer = millis();               // Сбрасываем таймер дисплея
-      long pos = file.position() - 500; // Смещаем положение файла вверх
+    {                                    // Если нажата или удержана вверх
+      uiTimer = millis();                // Сбрасываем таймер дисплея
+      long pos = file.position() - 1000; // Смещаем положение файла вверх
       if (pos < 0)
         pos = 0;      // Если достигли нуля - не идем дальше
       file.seek(pos); // Устанавливаем указатель файла
@@ -400,6 +413,7 @@ void enterToReadFile(void)
       uiTimer = millis(); // Сбрасываем таймер дисплея
       drawPage(file);     // Рисуем страницу
     }
+
     yield(); // Внутренний поллинг ESP
   }
 }
@@ -409,22 +423,20 @@ void enterToReadFile(void)
 
 void setup()
 {
-  // pinMode(VCC_DISP_PIN, OUTPUT);
-  // pinMode(GND_DISP_PIN, OUTPUT);
-  // digitalWrite(VCC_DISP_PIN, 1);
-  // digitalWrite(GND_DISP_PIN, 0);
-
   pinMode(UP_BTN_PIN, INPUT_PULLUP);
   pinMode(OK_BTN_PIN, INPUT_PULLUP);
   pinMode(DWN_BTN_PIN, INPUT_PULLUP); // Все пины кнопок в режиме входа с подтяжкой
   ok.setHoldTimeout(1500);            // Длинное удержание кнопки ОК - 1.5 секунды
 
-  Wire.begin(IIC_SDA_PIN, IIC_SCL_PIN);
+  Wire.begin(IIC_SDA_PIN, IIC_SCL_PIN); // меняем i2c пины местами для подключения дисплея
 
   oled.init(IIC_SDA_PIN, IIC_SCL_PIN); // Инициализация оледа
   oled.clear();                        // Очистка оледа
   oled.update();                       // Вывод пустой картинки
   oled.autoPrintln(true);              // Включаем автоперенос строки
+
+  oled.flipH(FLIP); // переворот дисплея
+  oled.flipV(FLIP);
 
   LittleFS.begin();  // Инициализация файловой системы
   EEPROM.begin(100); // Инициализация EEPROM
@@ -474,4 +486,13 @@ void loop()
     uiTimer = millis(); // Сбрасываем таймер дисплея
     enterToReadFile();  // Переходим к чтению файла
   }
+  // else if (up.isHold() and down.isHold())
+  // {
+  //   oled.flipH(1);
+  //   oled.flipV(1);
+
+  //   EncButton<EB_TICK, DWN_BTN_PIN> up;  // Кнопка вверх
+  //   EncButton<EB_TICK, OK_BTN_PIN> ok;   // Кнопка ОК
+  //   EncButton<EB_TICK, UP_BTN_PIN> down; // Кнопка вниз
+  // }
 }
