@@ -14,6 +14,10 @@
           Остальные параметры по умолчанию
 */
 
+// TODO:
+// 1. настройка шрифта
+// 2. настройка режима аккумулятора
+
 /* ================ Настройки ================ */
 
 #define AP_DEFAULT_SSID "MicroReader(M)" // Стандартное имя точки доступа ESP (До 20-ти символов)
@@ -27,11 +31,16 @@
 #define IIC_SCL_PIN D2    // Номер GPIO SCL дисплея
 #define OLED_CONTRAST 100 // Яркость дисплея по умолчанию (%)
 #define FLIP 0            // перевернуть экран
+#define DEFAULT_SCALE 1   // дефолтный размер шрифта
 
 #define UP_BTN_PIN D6  // Номер GPIO для кнопки ВВЕРХ
 #define OK_BTN_PIN D5  // Номер GPIO для кнопки ОК
 #define DWN_BTN_PIN D7 // Номер GPIO для кнопки ВНИЗ
 #define _EB_DEB 25     // Дебаунс кнопок (мс)
+
+#define BATTERY 0
+#define VBAT_FULL_MV 3600  // Напряжение питания при заряженном аккуме в (мВ)
+#define VBAT_EMPTY_MV 2600 // Напряжение питания при севшем аккуме в (мВ)
 
 #define EE_KEY 0x10 // Ключ EEPROM (1 байт) - измени, чтобы сбросить настройки
 
@@ -65,8 +74,11 @@ struct
   char staPass[21] = STA_DEFAULT_PASS; // Пароль сети для STA режима по умолчанию
   bool staModeEn = STA_CONNECT_EN;     // Подключаться роутеру по умолчанию?
   bool flip = FLIP;                    // перевернуть экран?
+  bool useBattery = BATTERY;           // использовать аккумулятор?
   int dispContrast = OLED_CONTRAST;    // Яркость оледа
+  byte scale = DEFAULT_SCALE;
 } sets;
+
 byte cursor = 0;       // Указатель (курсор) меню
 byte files = 0;        // Количество файлов
 uint32_t uiTimer = 0;  // Таймер таймаута дисплея
@@ -107,7 +119,14 @@ void build()
           GP.BREAK();
           GP.SWITCH("flipSwitch", sets.flip););
 
-      GP.FORM_END(); // <- Конец формы (костыль)
+      M_BLOCK_TAB(
+          "Text scale",
+          GP.LABEL("Размер текста");
+          GP.BREAK();
+          GP.BREAK();
+          GP.SLIDER("scaleSlider", sets.scale, 1, 4, 1);)
+
+          GP.FORM_END(); // <- Конец формы (костыль)
 
       M_BLOCK_TAB(           // Блок с OTA-апдейтом
           "ESP UPDATE",      // Имя + тип DIV
@@ -133,6 +152,7 @@ void action(GyverPortal &p)
     p.copyStr("staPass", sets.staPass);
     p.copyBool("staEn", sets.staModeEn);
     p.copyBool("flipSwitch", sets.flip);
+    p.copyInt("scaleSlider", sets.scale);
 
     byte con = map(sets.dispContrast, 10, 100, 1, 255);
     oled.setContrast(con); // Тут же задаем яркость оледа
@@ -437,11 +457,6 @@ void setup()
 
   Wire.begin(IIC_SDA_PIN, IIC_SCL_PIN); // меняем i2c пины местами для подключения дисплея
 
-  oled.init(IIC_SDA_PIN, IIC_SCL_PIN); // Инициализация оледа
-  oled.clear();                        // Очистка оледа
-  oled.update();                       // Вывод пустой картинки
-  oled.autoPrintln(true);              // Включаем автоперенос строки
-
   LittleFS.begin();  // Инициализация файловой системы
   EEPROM.begin(100); // Инициализация EEPROM
   if (EEPROM.read(0) != EE_KEY)
@@ -454,6 +469,12 @@ void setup()
   {                      // Если ключ совпадает
     EEPROM.get(1, sets); // Читаем настройки
   }
+
+  oled.init(IIC_SDA_PIN, IIC_SCL_PIN); // Инициализация оледа
+  oled.clear();                        // Очистка оледа
+  oled.update();                       // Вывод пустой картинки
+  oled.autoPrintln(true);              // Включаем автоперенос строки
+  oled.setScale(sets.scale);           // изменение размера текста
 
   if (sets.flip)
   {
