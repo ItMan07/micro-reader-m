@@ -14,14 +14,10 @@
           Остальные параметры по умолчанию
 */
 
-// TODO:
-// 1. настройка шрифта
-// 2. настройка режима аккумулятора
-
 /* ================ Настройки ================ */
 
 #define AP_DEFAULT_SSID "MicroReader(M)" // Стандартное имя точки доступа ESP (До 20-ти символов)
-#define AP_DEFAULT_PASS "12345687"       // Стандартный пароль точки доступа ESP (До 20-ти символов)
+#define AP_DEFAULT_PASS "00000000"       // Стандартный пароль точки доступа ESP (До 20-ти символов)
 #define STA_DEFAULT_SSID ""              // Стандартное имя точки доступа роутера (До 20-ти символов)
 #define STA_DEFAULT_PASS ""              // Стандартный пароль точки доступа роутера (До 20-ти символов)
 #define STA_CONNECT_EN 0                 // 1/0 - вкл./выкл. подключение к роутеру
@@ -30,15 +26,15 @@
 #define IIC_SDA_PIN D1    // Номер GPIO SDA дисплея
 #define IIC_SCL_PIN D2    // Номер GPIO SCL дисплея
 #define OLED_CONTRAST 100 // Яркость дисплея по умолчанию (%)
-#define FLIP 0            // перевернуть экран
 #define DEFAULT_SCALE 1   // дефолтный размер шрифта
+#define FLIP 0            // перевернуть экран
 
 #define UP_BTN_PIN D6  // Номер GPIO для кнопки ВВЕРХ
 #define OK_BTN_PIN D5  // Номер GPIO для кнопки ОК
 #define DWN_BTN_PIN D7 // Номер GPIO для кнопки ВНИЗ
 #define _EB_DEB 25     // Дебаунс кнопок (мс)
 
-#define BATTERY 0
+#define BATTERY 0          // использовать аккумулятор
 #define VBAT_FULL_MV 3600  // Напряжение питания при заряженном аккуме в (мВ)
 #define VBAT_EMPTY_MV 2600 // Напряжение питания при севшем аккуме в (мВ)
 
@@ -63,6 +59,10 @@ EncButton2<EB_BTN> up(INPUT_PULLUP, UP_BTN_PIN);    // Кнопка вверх
 EncButton2<EB_BTN> ok(INPUT_PULLUP, OK_BTN_PIN);    // Кнопка ОК
 EncButton2<EB_BTN> down(INPUT_PULLUP, DWN_BTN_PIN); // Кнопка вниз
 
+#if BATTERY
+ADC_MODE(ADC_VCC); // Режим работы АЦП - измерение VCC
+#endif
+
 /* =========================================== */
 /* ========= Глобальные переменные =========== */
 
@@ -74,13 +74,14 @@ struct
   char staPass[21] = STA_DEFAULT_PASS; // Пароль сети для STA режима по умолчанию
   bool staModeEn = STA_CONNECT_EN;     // Подключаться роутеру по умолчанию?
   bool flip = FLIP;                    // перевернуть экран?
-  bool useBattery = BATTERY;           // использовать аккумулятор?
-  int dispContrast = OLED_CONTRAST;    // Яркость оледа
+  // bool useBattery = BATTERY;           // использовать аккумулятор?
+  int dispContrast = OLED_CONTRAST; // Яркость оледа
   byte scale = DEFAULT_SCALE;
 } sets;
 
 byte cursor = 0;       // Указатель (курсор) меню
 byte files = 0;        // Количество файлов
+int batMv = 3000;      // Напряжение питания ESP
 uint32_t uiTimer = 0;  // Таймер таймаута дисплея
 uint32_t batTimer = 0; // Таймер опроса АКБ
 
@@ -126,7 +127,14 @@ void build()
           GP.BREAK();
           GP.SLIDER("scaleSlider", sets.scale, 1, 4, 1);)
 
-          GP.FORM_END(); // <- Конец формы (костыль)
+      // M_BLOCK_TAB(
+      //     "Battery",
+      //     GP.LABEL("Использовать аккумуллятор");
+      //     GP.BREAK();
+      //     GP.BREAK();
+      //     GP.SWITCH("batterySwitch", sets.useBattery););
+
+      GP.FORM_END(); // <- Конец формы (костыль)
 
       M_BLOCK_TAB(           // Блок с OTA-апдейтом
           "ESP UPDATE",      // Имя + тип DIV
@@ -153,6 +161,7 @@ void action(GyverPortal &p)
     p.copyBool("staEn", sets.staModeEn);
     p.copyBool("flipSwitch", sets.flip);
     p.copyInt("scaleSlider", sets.scale);
+    // p.copyBool("batterySwitch", sets.useBattery);
 
     byte con = map(sets.dispContrast, 10, 100, 1, 255);
     oled.setContrast(con); // Тут же задаем яркость оледа
@@ -190,6 +199,50 @@ int getFilesCount(void)
 }
 
 /* ======================================================================= */
+/* ========================= Индикатор заряда ============================ */
+
+void checkBatteryCharge(void)
+{ // Проверка заряда аккумулятора
+  // if (sets.useBattery)
+  if(BATTERY)
+  {
+    if (millis() - batTimer >= 5000)
+    {                       // Таймер батарейки на 5 сек
+      batTimer = millis();  // Сброс таймера
+      batMv = ESP.getVcc(); // Измерение напряжения питания
+    }
+  }
+}
+
+void drawBatteryCharge(void)
+{ // Рисуем батарейку
+  // if (sets.useBattery)
+  if(BATTERY)
+  {
+    byte charge =                                   // Заряд в виде числа
+        constrain(                                  // Ограничиваем диапазон
+            map(                                    // Преобразуем диапазон
+                batMv, VBAT_EMPTY_MV, VBAT_FULL_MV, // Напряжение в заряд (костыль)
+                0, 12                               // Преобразуем в [0...12]
+                ),                                  // Конец map
+            0, 12                                   // Ограничиваем от 0 до 12
+        );                                          // Конец constrain
+    oled.setCursorXY(110, 0);                       // Положение на экране
+    oled.drawByte(0b00111100);                      // Пипка
+    oled.drawByte(0b00111100);                      // 2 штуки
+    oled.drawByte(0b11111111);                      // Передняя стенка
+    for (uint8_t i = 0; i < 12; i++)
+    { // 12 градаций
+      if (i < 12 - charge)
+        oled.drawByte(0b10000001); // Рисуем пустые
+      else
+        oled.drawByte(0b11111111); // Рисуем полные
+    }
+    oled.drawByte(0b11111111); // Задняя стенка
+  }
+}
+
+/* ======================================================================= */
 /* ============================ Главное меню ============================= */
 
 void drawMainMenu(void)
@@ -209,8 +262,10 @@ void drawMainMenu(void)
   oled.setCursor(0, constrain(cursor, 0, 5) + 2);
   oled.print(" "); // Чистим место под указатель
   oled.setCursor(0, constrain(cursor, 0, 5) + 2);
-  oled.print(">"); // Выводим указатель на нужной строке
-  oled.update();   // Выводим картинку
+  oled.print(">");      // Выводим указатель на нужной строке
+  checkBatteryCharge(); // Проверка напряжение аккума
+  drawBatteryCharge();  // Рисуем индикатор
+  oled.update();        // Выводим картинку
 }
 
 /* ======================================================================= */
@@ -228,6 +283,8 @@ void drawStaMenu(void)
   oled.setCursor(0, 4);
   oled.print("LocalIP:");
   oled.print(WiFi.localIP()); // Выводим IP
+  checkBatteryCharge();       // Проверка напряжение аккума
+  drawBatteryCharge();        // Рисуем индикатор
   oled.update();              // Выводим картинку
 }
 
@@ -246,6 +303,8 @@ void drawApMenu(void)
   oled.setCursor(0, 6);
   oled.print("LocalIP:");
   oled.print("192.168.4.1"); // Выводим IP
+  checkBatteryCharge();      // Проверка напряжение аккума
+  drawBatteryCharge();       // Рисуем индикатор
   oled.update();             // Выводим картинку
 }
 
@@ -255,6 +314,8 @@ void enterToWifiMenu(void)
   oled.home();               // Возврат на 0,0
   oled.line(0, 10, 127, 10); // Линия
   oled.print("WI-FI MENU");  // Выводим режим
+  checkBatteryCharge();      // Проверка напряжение аккума
+  drawBatteryCharge();       // Рисуем индикатор
   oled.update();             // Выводим картинку
 
   if (sets.staModeEn)
@@ -265,6 +326,8 @@ void enterToWifiMenu(void)
     oled.print("WI-FI MENU");  // Выводим режим
     oled.setCursor(0, 2);
     oled.print("Connecting"); // Выводим надпись
+    checkBatteryCharge();     // Проверка напряжение аккума
+    drawBatteryCharge();      // Рисуем индикатор
     oled.update();            // Выводим картинку
 
     WiFi.mode(WIFI_STA);                    // Включаем wifi
@@ -484,12 +547,17 @@ void setup()
     down.setPins(INPUT_PULLUP, UP_BTN_PIN);
   }
 
+  // if (sets.useBattery)
+  if(BATTERY)
+  {
+    batMv = ESP.getVcc(); // Читаем напряжение питания
+  }
+
   byte con = map(sets.dispContrast, 10, 100, 1, 255);
   oled.setContrast(con);   // Тут же задаем яркость оледа
   files = getFilesCount(); // Читаем количество файлов
   uiTimer = millis();      // Сбрасываем таймер дисплея
   drawMainMenu();          // Рисуем главное меню
-  // enterToWifiMenu();
 }
 
 void loop()
