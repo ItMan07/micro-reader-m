@@ -16,18 +16,18 @@
 
 /* ================ Настройки ================ */
 
-#define AP_DEFAULT_SSID "MicroReader(MOD)" // Стандартное имя точки доступа ESP (До 20-ти символов)
-#define AP_DEFAULT_PASS "12345687"         // Стандартный пароль точки доступа ESP (До 20-ти символов)
-#define STA_DEFAULT_SSID ""                // Стандартное имя точки доступа роутера (До 20-ти символов)
-#define STA_DEFAULT_PASS ""                // Стандартный пароль точки доступа роутера (До 20-ти символов)
-#define STA_CONNECT_EN 0                   // 1/0 - вкл./выкл. подключение к роутеру
-#define WIFI_TIMEOUT_S 300                 // Таймаут на отключение Wi-Fi (секунды)
+#define AP_DEFAULT_SSID "MicroReader(M)" // Стандартное имя точки доступа ESP (До 20-ти символов)
+#define AP_DEFAULT_PASS "12345687"       // Стандартный пароль точки доступа ESP (До 20-ти символов)
+#define STA_DEFAULT_SSID ""              // Стандартное имя точки доступа роутера (До 20-ти символов)
+#define STA_DEFAULT_PASS ""              // Стандартный пароль точки доступа роутера (До 20-ти символов)
+#define STA_CONNECT_EN 0                 // 1/0 - вкл./выкл. подключение к роутеру
+#define WIFI_TIMEOUT_S 300               // Таймаут на отключение Wi-Fi (секунды)
 
 #define IIC_SDA_PIN D1    // Номер GPIO SDA дисплея
 #define IIC_SCL_PIN D2    // Номер GPIO SCL дисплея
 #define OLED_CONTRAST 100 // Яркость дисплея по умолчанию (%)
+#define FLIP 0            // перевернуть экран
 
-#define FLIP 0         // перевернуть экран
 #define UP_BTN_PIN D6  // Номер GPIO для кнопки ВВЕРХ
 #define OK_BTN_PIN D5  // Номер GPIO для кнопки ОК
 #define DWN_BTN_PIN D7 // Номер GPIO для кнопки ВНИЗ
@@ -78,14 +78,14 @@ uint32_t batTimer = 0; // Таймер опроса АКБ
 /* ================= Билд веб-страницы + подсос значений ================= */
 
 void build()
-{                                   // Билд страницы
-  GP.BUILD_BEGIN(400);              // Ширина колонок
-  GP.THEME(GP_DARK);                // Темная тема
-  GP.PAGE_TITLE("Wi-Fi Reader");    // Обзываем титл
-  GP.FORM_BEGIN("/cfg");            // Начало формы
-  GP.GRID_RESPONSIVE(600);          // Отключение респонза при узком экране
-  M_BLOCK(                          // Общий блок-колонка для WiFi
-      GP.SUBMIT("SUBMIT SETTINGS"); // Кнопка отправки формы
+{                                        // Билд страницы
+  GP.BUILD_BEGIN(400);                   // Ширина колонок
+  GP.THEME(GP_DARK);                     // Темная тема
+  GP.PAGE_TITLE("Wi-Fi Reader");         // Обзываем титл
+  GP.FORM_BEGIN("/cfg");                 // Начало формы
+  GP.GRID_RESPONSIVE(600);               // Отключение респонза при узком экране
+  M_BLOCK(                               // Общий блок-колонка для WiFi
+      GP.SUBMIT_MINI("SUBMIT SETTINGS"); // Кнопка отправки формы
 
       M_BLOCK_TAB(   // Конфиг для AP режима -> текстбоксы (логин + пароль)
           "AP-Mode", // Имя + тип DIV
@@ -102,9 +102,10 @@ void build()
 
       M_BLOCK_TAB(
           "Flip",
-          GP.TEXT("Перевернуть экран");
+          GP.LABEL("Перевернуть экран");
           GP.BREAK();
-          GP.SWITCH("flip_switch", sets.flip););
+          GP.BREAK();
+          GP.SWITCH("flipSwitch", sets.flip););
 
       GP.FORM_END(); // <- Конец формы (костыль)
 
@@ -131,7 +132,7 @@ void action(GyverPortal &p)
     p.copyStr("staSsid", sets.staSsid);
     p.copyStr("staPass", sets.staPass);
     p.copyBool("staEn", sets.staModeEn);
-    p.copyBool("flip_switch", sets.flip);
+    p.copyBool("flipSwitch", sets.flip);
 
     byte con = map(sets.dispContrast, 10, 100, 1, 255);
     oled.setContrast(con); // Тут же задаем яркость оледа
@@ -406,9 +407,9 @@ void enterToReadFile(void)
       return; // Закрываем файл и выходим
     }
     else if (up.isClick() or up.isHold())
-    {                                    // Если нажата или удержана вверх
-      uiTimer = millis();                // Сбрасываем таймер дисплея
-      long pos = file.position() - 1000; // Смещаем положение файла вверх
+    {                                   // Если нажата или удержана вверх
+      uiTimer = millis();               // Сбрасываем таймер дисплея
+      long pos = file.position() - 500; // Смещаем положение файла вверх
       if (pos < 0)
         pos = 0;      // Если достигли нуля - не идем дальше
       file.seek(pos); // Устанавливаем указатель файла
@@ -441,21 +442,6 @@ void setup()
   oled.update();                       // Вывод пустой картинки
   oled.autoPrintln(true);              // Включаем автоперенос строки
 
-  if (sets.flip)
-  {
-    oled.flipH(sets.flip); // переворот дисплея
-    oled.flipV(sets.flip);
-    up.setPins(DWN_BTN_PIN);
-    down.setPins(UP_BTN_PIN);
-  }
-  else
-  {
-    oled.flipH(sets.flip); // переворот дисплея
-    oled.flipV(sets.flip);
-    up.setPins(UP_BTN_PIN);
-    down.setPins(DWN_BTN_PIN);
-  }
-
   LittleFS.begin();  // Инициализация файловой системы
   EEPROM.begin(100); // Инициализация EEPROM
   if (EEPROM.read(0) != EE_KEY)
@@ -469,11 +455,20 @@ void setup()
     EEPROM.get(1, sets); // Читаем настройки
   }
 
+  if (sets.flip)
+  {
+    oled.flipH(1); // переворот дисплея
+    oled.flipV(1);
+    up.setPins(INPUT_PULLUP, DWN_BTN_PIN);
+    down.setPins(INPUT_PULLUP, UP_BTN_PIN);
+  }
+
   byte con = map(sets.dispContrast, 10, 100, 1, 255);
   oled.setContrast(con);   // Тут же задаем яркость оледа
   files = getFilesCount(); // Читаем количество файлов
   uiTimer = millis();      // Сбрасываем таймер дисплея
   drawMainMenu();          // Рисуем главное меню
+  // enterToWifiMenu();
 }
 
 void loop()
